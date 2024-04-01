@@ -224,9 +224,13 @@ class TrieStore {
   // auto Get(std::string_view key, size_t version = size_t(-1)) -> std::optional<ValueGuard<T>> {
     if (version == size_t(-1))
       version = get_version();
-    if (version > get_version())
+    else if (version > get_version())
       throw std::runtime_error("invalid version");
-    Trie trie = snapshots_[version];
+    Trie trie;
+    {
+      std::shared_lock reader_lock(snapshots_lock_);
+      trie = snapshots_[version]
+    }
     T* result = const_cast<T*>(trie.Get<T>(key));
     if (result)
       return ValueGuard<T>(trie, *result);
@@ -245,8 +249,11 @@ class TrieStore {
     Trie trie = snapshots_.back();
 
     trie = trie.Put(key, std::move(value));
-    snapshots_.push_back(trie);
-    version_.fetch_add(1, std::memory_order_acquire); // commit point
+
+    { // commmit
+      std::unique_lock writer_lock(snapshots_lock_);
+      snapshots_.push_back(new_trie);
+    }
 
     return get_version();
   }
@@ -260,16 +267,21 @@ class TrieStore {
     Trie trie = snapshots_.back();
     Trie new_trie = trie.Remove(key);
     if (new_trie.native_handle() == trie.native_handle())
-      return get_version();
-    snapshots_.push_back(new_trie);
-    version_.fetch_add(1, std::memory_order_acquire); // commit point
+      return snapshots_.size() - 1;
+    
+
+    { // commmit
+      std::unique_lock writer_lock(snapshots_lock_);
+      snapshots_.push_back(new_trie);
+    }
 
     return get_version();
   }
 
   // This function return the newest version number
   size_t get_version() const {
-    return version_;
+    std::shared_lock reader_lock(snapshots_lock_);
+    return snapshots_.size() - 1;
   }
 
   // ~TrieStore() {
@@ -282,10 +294,12 @@ class TrieStore {
   // Concurrent modifications should have the effect of applying them in some sequential order
   std::mutex write_lock_;
 
+
   // Stores all historical versions of trie
   // version number ranges from [0, snapshots_.size())
   std::vector<Trie> snapshots_{1};
-  std::atomic<size_t> version_{0};
+  mutable std::shared_mutex snapshots_lock_;
+  // std::atomic<size_t> version_{0};
 };
 
 }  // namespace sjtu
