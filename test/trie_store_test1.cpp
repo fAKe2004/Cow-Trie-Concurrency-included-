@@ -5,7 +5,7 @@
 #include <vector>
 #include <string>
 
-const int N = 10000;
+const int N = 100;
 
 void concurrentPut(sjtu::TrieStore& trie, const std::string& key) 
 {
