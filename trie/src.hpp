@@ -229,7 +229,7 @@ class TrieStore {
     Trie trie;
     {
       std::shared_lock reader_lock(snapshots_lock_);
-      trie = snapshots_[version]
+      trie = snapshots_[version];
     }
     T* result = const_cast<T*>(trie.Get<T>(key));
     if (result)
@@ -252,7 +252,7 @@ class TrieStore {
 
     { // commmit
       std::unique_lock writer_lock(snapshots_lock_);
-      snapshots_.push_back(new_trie);
+      snapshots_.push_back(trie);
     }
 
     return get_version();
